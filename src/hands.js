@@ -79,6 +79,19 @@ export class HandTracker {
     this.handPos = { x: 0, y: 0 }
     this.hasHand = false
     this.lastSeen = 0
+
+    /* 诊断用：不识别时必须能说清是哪一环断了 */
+    this.phase = 'idle'           // idle | loading-model | running | error
+    this.targetFps = 15
+    this.lastSentAt = 0
+    this.inflight = false
+    this.framesSent = 0
+    this.framesSkipped = 0
+    this.sendErrors = 0
+    this.resultsCount = 0
+    this.lastScore = 0
+    this.lastError = ''
+    this.startAt = 0
   }
 
   async start() {
@@ -99,18 +112,34 @@ export class HandTracker {
     })
 
     this.video.srcObject = this.stream
-    await this.video.play().catch(() => {})
     this.video.classList.remove('off')
+
+    // 有些浏览器 play() resolve 后仍是 paused（autoplay 策略），补一次
+    try { await this.video.play() } catch (err) { this.lastError = 'video.play: ' + (err?.message || err) }
+    if (this.video.paused) {
+      await new Promise((r) => setTimeout(r, 150))
+      try { await this.video.play() } catch (err) { this.lastError = 'video.play(retry): ' + (err?.message || err) }
+    }
 
     this.hands = new window.Hands({ locateFile: (file) => `./vendor/mediapipe/${file}` })
     this.hands.setOptions({
       maxNumHands: 1,
       modelComplexity: 0,
-      minDetectionConfidence: 0.6,
-      minTrackingConfidence: 0.5,
+      // 阈值放宽一点：之前的 0.6/0.5 在普通光线下容易一直判不到手
+      minDetectionConfidence: 0.45,
+      minTrackingConfidence: 0.4,
     })
     this.hands.onResults((res) => this._onResults(res))
 
+    // 显式初始化模型：加载失败必须抛出来，否则就是"伸手永远没反应"
+    this.phase = 'loading-model'
+    this.onStatus('正在加载手势模型…')
+    if (typeof this.hands.initialize === 'function') {
+      await this.hands.initialize()
+    }
+
+    this.phase = 'running'
+    this.startAt = performance.now()
     this.running = true
     this.onStatus('已连接摄像头')
     this._loop()
@@ -130,9 +159,25 @@ export class HandTracker {
   _loop() {
     if (!this.running) return
     const v = this.video
-    if (v.readyState >= 2 && v.currentTime !== this.lastVideoTime) {
-      this.lastVideoTime = v.currentTime
-      this.hands.send({ image: v }).catch(() => {})
+    const now = performance.now()
+
+    // 固定 15fps 送帧：之前用 currentTime 变化做闸门，视频一旦没往前走就永久只送 1 帧
+    if (v.readyState >= 2 && now - this.lastSentAt >= 1000 / this.targetFps) {
+      this.lastSentAt = now
+      if (this.inflight) {
+        this.framesSkipped++
+      } else {
+        this.inflight = true
+        this.hands
+          .send({ image: v })
+          .then(() => { this.framesSent++ })
+          .catch((err) => {
+            this.sendErrors++
+            this.lastError = String(err?.message || err).slice(0, 160)
+            if (this.sendErrors === 1) this.onStatus('手势模型推理失败：' + this.lastError)
+          })
+          .finally(() => { this.inflight = false })
+      }
     }
     this.raf = requestAnimationFrame(() => this._loop())
   }
@@ -141,6 +186,8 @@ export class HandTracker {
     const list = res.multiHandLandmarks
     const lm = list && list.length ? list[0] : null
     const now = performance.now()
+    this.resultsCount++
+    if (res.multiHandedness?.[0]) this.lastScore = res.multiHandedness[0].score || 0
 
     if (lm) {
       this.lastSeen = now

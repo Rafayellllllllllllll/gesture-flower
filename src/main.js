@@ -308,7 +308,14 @@ function updateHud(now) {
     return
   }
   if (!state.hasHand) {
-    setPill('等待伸手…')
+    // 分阶段提示：能一眼看出是"没画面 / 模型没跑 / 模型跑了但没手"
+    const t = tracker
+    const waited = performance.now() - (t.startAt || performance.now())
+    if (t.sendErrors > 0) setPill('手势推理报错（按 D 看原因）', 'err')
+    else if (t.framesSent === 0 && waited > 4000) setPill('摄像头没出画面（可能被占用）', 'err')
+    else if (t.resultsCount === 0 && waited > 7000) setPill('手势模型没出结果 · 换 Chrome 试试', 'err')
+    else if (t.resultsCount > 0) setPill('把手放进画面中间（近一点、亮一点）', '')
+    else setPill('正在加载手势模型…', '')
     return
   }
   if (s < 0.32) setPill('花苞闭合', 'bud')
@@ -406,7 +413,13 @@ function animate() {
     debugEl.textContent =
       `fps ${state.fps}\nspread ${state.spread.toFixed(3)}\n` +
       `ratio ${state.rawRatio.toFixed(2)}\nparticles ${CONFIG.count}\n` +
-      `hand ${state.hasHand ? 'yes' : 'no'}  cam ${state.cameraReady ? 'on' : 'off'}`
+      `hand ${state.hasHand ? 'yes' : 'no'}  cam ${state.cameraReady ? 'on' : 'off'}\n` +
+      `phase ${tracker.phase}  score ${tracker.lastScore.toFixed(2)}\n` +
+      `frames ${tracker.framesSent} sent / ${tracker.framesSkipped} skip\n` +
+      `results ${tracker.resultsCount}  errors ${tracker.sendErrors}\n` +
+      `err ${tracker.lastError ? tracker.lastError.slice(0, 80) : '-'}\n` +
+      `search ${location.search || '(none)'}\n` +
+      `gerr ${(document.body.dataset.error || '-').slice(0, 70)}`
     debugEl.style.display = 'block'
   } else if (debugEl.style.display !== 'none') {
     debugEl.style.display = 'none'
@@ -456,6 +469,8 @@ state.pointerMode = true
 setPill('点一下开始')
 if (params.get('camera') === 'off' || CONFIG.lockedSpread !== null) {
   enterTouchMode()   // 截图 / 演示 / 自动化：跳过开始界面
+} else if (params.get('camera') === 'auto') {
+  startCamera()      // 自动进摄像头（老访客 / 自动化测试用）
 }
 animate()
 
