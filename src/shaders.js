@@ -13,17 +13,21 @@ uniform float uTime;
 uniform float uSpread;       // 0 = 花苞，1 = 完全绽放（已缓动）
 uniform float uPixelRatio;
 uniform float uPointScale;
+uniform float uAlphaMul;     // 光晕层用：同一套着色器，渲染成大而淡的第二层
 uniform vec2  uHand;         // 手部位置，约 -1..1
 uniform float uHandActive;   // 0 / 1
 
 attribute vec3 aBud;         // 花苞状态位置
 attribute vec3 aBloom;       // 绽放状态位置
 attribute float aRho;        // 0 = 花心 → 1 = 花瓣边缘
+attribute float aEdge;       // 0 = 花瓣中线 → 1 = 花瓣侧缘
 attribute float aSeed;       // 随机种子 0..1
 attribute float aSize;
 
 varying vec3  vColor;
 varying float vGlow;
+varying float vEdge;
+varying float vAlphaMul;
 
 vec3 palette(float rho) {
   vec3 pinkDeep   = vec3(1.000, 0.478, 0.714); // #FF7AB6
@@ -80,12 +84,19 @@ void main() {
 
   float depthScale = 320.0 / max(-mv.z, 0.001);
   // 花苞时粒子挤在小体积里 → 单颗压暗；绽放时铺开 → 提亮，整体亮度才稳定
-  gl_PointSize = aSize * uPointScale * uPixelRatio * depthScale * (0.72 + 0.45 * e);
+  float rim = smoothstep(0.78, 1.0, aEdge);
+  gl_PointSize = aSize * uPointScale * uPixelRatio * depthScale * (0.72 + 0.45 * e) * (1.0 + 0.55 * rim);
 
   vColor = palette(aRho);
-  // 花心粒子极密，按粒子压暗一点，靠叠加自然发光，避免糊成一团白
-  float centerDamp = mix(0.45, 1.0, smoothstep(0.02, 0.30, aRho));
-  vGlow = mix(0.55, 1.22, e) * (0.80 + 0.30 * aSeed) * centerDamp;
+  // 花瓣侧缘往浅蓝→紫偏一点，勾出发光的轮廓（最外圈偏紫，避免整圈发青）
+  vec3 rimColor = mix(vec3(0.655, 0.910, 1.000), vec3(0.702, 0.533, 1.000), smoothstep(0.45, 1.0, aEdge));
+  vColor = mix(vColor, rimColor, rim * 0.50);
+
+  // 花心粒子极密，按粒子大幅压暗，靠叠加自然发光，避免糊成一团白
+  float centerDamp = mix(0.28, 1.0, smoothstep(0.02, 0.34, aRho));
+  vGlow = mix(0.55, 1.22, e) * (0.80 + 0.30 * aSeed) * centerDamp * (1.0 + 0.40 * rim);
+  vEdge = aEdge;
+  vAlphaMul = uAlphaMul;
 }
 `
 
@@ -94,6 +105,8 @@ precision highp float;
 
 varying vec3  vColor;
 varying float vGlow;
+varying float vEdge;
+varying float vAlphaMul;
 
 void main() {
   // 圆形柔光点精灵
@@ -105,7 +118,7 @@ void main() {
   float halo = pow(1.0 - r, 0.85);      // 外圈光晕
 
   // 叠加混合很容易过曝：单颗粒子要克制，靠数量堆出光感
-  float alpha = (core * 0.66 + halo * 0.17) * vGlow;
+  float alpha = (core * 0.66 + halo * 0.17) * vGlow * vAlphaMul;
 
   vec3 col = vColor * (0.62 + 0.80 * core);
   gl_FragColor = vec4(col, alpha);

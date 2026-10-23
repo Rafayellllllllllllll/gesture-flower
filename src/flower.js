@@ -45,10 +45,11 @@ export function createFlower({ count = 16000, petals = 6, radius = 1.95, seed = 
   const bud = new Float32Array(count * 3)
   const bloom = new Float32Array(count * 3)
   const rho = new Float32Array(count)
+  const edge = new Float32Array(count)
   const seeds = new Float32Array(count)
   const sizes = new Float32Array(count)
 
-  const stamenCount = Math.floor(count * 0.18) // 约 18% 粒子做花蕊
+  const stamenCount = Math.floor(count * 0.12) // 约 12% 粒子做花蕊（太多会把中心叠爆）
 
   // 每片花瓣的长度 / 角度略有差异，避免"完美对称的假花"
   const petalLen = Array.from({ length: petals }, () => 1 + (rand() - 0.5) * 0.12)
@@ -58,14 +59,15 @@ export function createFlower({ count = 16000, petals = 6, radius = 1.95, seed = 
     const i3 = i * 3
 
     let x, y, z, t, budX, budY, budZ
+    let edgeVal = 0
 
     if (i < stamenCount) {
       // ── 花蕊：中心的小圆盘 ───────────────────────────────
       const a = rand() * TAU
-      const rr = radius * 0.17 * Math.sqrt(rand()) * (0.35 + 0.65 * rand())
+      const rr = radius * 0.21 * Math.sqrt(rand()) * (0.35 + 0.65 * rand())
       x = Math.cos(a) * rr
       y = Math.sin(a) * rr
-      z = 0.20 + Math.cos((rr / (radius * 0.17)) * Math.PI * 0.5) * 0.13 + (rand() - 0.5) * 0.04
+      z = 0.20 + Math.cos((rr / (radius * 0.21)) * Math.PI * 0.5) * 0.13 + (rand() - 0.5) * 0.04
       t = 0.02 + rand() * 0.14
 
       budX = x * 0.22
@@ -90,6 +92,7 @@ export function createFlower({ count = 16000, petals = 6, radius = 1.95, seed = 
       z += 0.05
 
       t = clamp01(0.14 + 0.86 * u + (rand() - 0.5) * 0.06)
+      edgeVal = Math.abs(v)   // 花瓣侧缘 = 1，中线 = 0，用于勾发光轮廓
 
       // ── 花瓣：花苞形态（同一套 θ/u 参数，收进一个竖立的水滴）──
       // 轮廓：上下两端收敛、中段最宽 → 闭合的花苞，而不是张口的锥
@@ -113,6 +116,7 @@ export function createFlower({ count = 16000, petals = 6, radius = 1.95, seed = 
     bud[i3 + 2] = budZ
 
     rho[i] = t
+    edge[i] = edgeVal
     seeds[i] = rand()
     // 花心颗粒更小，避免中心叠成一团白；外缘略大，轮廓更柔和
     sizes[i] = (0.55 + rand() * 1.05) * (0.92 + 0.38 * t)
@@ -124,6 +128,7 @@ export function createFlower({ count = 16000, petals = 6, radius = 1.95, seed = 
   geometry.setAttribute('aBloom', new THREE.BufferAttribute(bloom, 3))
   geometry.setAttribute('aBud', new THREE.BufferAttribute(bud, 3))
   geometry.setAttribute('aRho', new THREE.BufferAttribute(rho, 1))
+  geometry.setAttribute('aEdge', new THREE.BufferAttribute(edge, 1))
   geometry.setAttribute('aSeed', new THREE.BufferAttribute(seeds, 1))
   geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1))
   geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(), radius * 1.6)
@@ -138,6 +143,7 @@ export function createFlower({ count = 16000, petals = 6, radius = 1.95, seed = 
       uPointScale: { value: 1 },
       uHand: { value: new THREE.Vector2(0, 0) },
       uHandActive: { value: 0 },
+      uAlphaMul: { value: 1 },
     },
     transparent: true,
     depthWrite: false,
@@ -147,7 +153,26 @@ export function createFlower({ count = 16000, petals = 6, radius = 1.95, seed = 
 
   const points = new THREE.Points(geometry, material)
   points.frustumCulled = false
-  return { points, material, geometry }
+
+  // 第二层光晕：复用同一份几何和着色器，只是点更大更淡 → 体积光感
+  // 共享 uTime / uSpread / uHand 等 uniform 对象，颜色与动画天然同步
+  const glowMaterial = new THREE.ShaderMaterial({
+    vertexShader: flowerVertexShader,
+    fragmentShader: flowerFragmentShader,
+    uniforms: {
+      ...material.uniforms,
+      uPointScale: { value: 1 },
+      uAlphaMul: { value: 0.13 },
+    },
+    transparent: true,
+    depthWrite: false,
+    depthTest: true,
+    blending: THREE.AdditiveBlending,
+  })
+  const glow = new THREE.Points(geometry, glowMaterial)
+  glow.frustumCulled = false
+
+  return { points, glow, material, glowMaterial, geometry }
 }
 
 /** 背景星尘 */

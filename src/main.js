@@ -58,12 +58,13 @@ camera.position.set(0, 0, 6.2)
 const flowerGroup = new THREE.Group()
 scene.add(flowerGroup)
 
-const { points: flower, material: flowerMat } = createFlower({
+const { points: flower, glow: flowerGlow, material: flowerMat, glowMaterial: flowerGlowMat } = createFlower({
   count: CONFIG.count,
   petals: CONFIG.petals,
   radius: CONFIG.radius,
   seed: CONFIG.seed,
 })
+flowerGroup.add(flowerGlow)
 flowerGroup.add(flower)
 
 // 背景星尘
@@ -79,6 +80,33 @@ const dustMat = new THREE.ShaderMaterial({
 const dust = new THREE.Points(dustData.geometry, dustMat)
 dust.frustumCulled = false
 scene.add(dust)
+
+// 背景极淡的粉色辉光，把"梦幻"托起来（纯贴图，几乎不耗性能）
+function radialTexture() {
+  const s = 256
+  const c = document.createElement('canvas')
+  c.width = c.height = s
+  const g = c.getContext('2d')
+  const grd = g.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2)
+  grd.addColorStop(0, 'rgba(255,158,207,0.50)')
+  grd.addColorStop(0.42, 'rgba(179,136,255,0.14)')
+  grd.addColorStop(1, 'rgba(0,0,0,0)')
+  g.fillStyle = grd
+  g.fillRect(0, 0, s, s)
+  const tex = new THREE.CanvasTexture(c)
+  tex.colorSpace = THREE.SRGBColorSpace
+  return tex
+}
+const aura = new THREE.Sprite(new THREE.SpriteMaterial({
+  map: radialTexture(),
+  blending: THREE.AdditiveBlending,
+  depthWrite: false,
+  transparent: true,
+  opacity: 0.6,
+}))
+aura.scale.set(9.5, 9.5, 1)
+aura.position.set(0, 0, -2.6)
+scene.add(aura)
 
 /* ── 状态 ──────────────────────────────────────────────────── */
 const state = {
@@ -118,6 +146,7 @@ function resize() {
   flowerMat.uniforms.uPixelRatio.value = dpr
   // 粒子屏幕尺寸随视口高度缩放，保持视觉比例一致
   flowerMat.uniforms.uPointScale.value = 0.062 * clamp(h / 900, 0.72, 1.45)
+  flowerGlowMat.uniforms.uPointScale.value = flowerMat.uniforms.uPointScale.value * 3.6
   dustMat.uniforms.uPixelRatio.value = dpr
 }
 window.addEventListener('resize', resize, { passive: true })
@@ -297,6 +326,7 @@ function animate() {
   flowerGroup.position.x += (state.hand.x * 0.45 * state.handActive - flowerGroup.position.x) * 0.04
   flowerGroup.position.y += (state.hand.y * 0.32 * state.handActive - flowerGroup.position.y) * 0.04
   flowerGroup.rotation.z = Math.sin(t * 0.13) * 0.05 + state.hand.x * 0.08 * state.handActive
+  flowerGroup.rotation.y = Math.sin(t * 0.09) * 0.18
   flowerGroup.rotation.x = -0.12 + Math.sin(t * 0.11) * 0.03
   flowerGroup.scale.setScalar(0.94 + state.spread * 0.08)
 
