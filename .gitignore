@@ -1,0 +1,6 @@
+# 依赖已 vendored 到 vendor/，这里只忽略本地杂物
+_test/
+node_modules/
+.DS_Store
+Thumbs.db
+*.log

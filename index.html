@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<title>指尖生花 · Gesture Bloom</title>
+<link rel="stylesheet" href="./src/style.css">
+<!-- MediaPipe Hands（经典脚本，暴露 window.Hands） -->
+<script src="./vendor/mediapipe/hands.js"></script>
+<script type="importmap">
+{
+  "imports": {
+    "three": "./vendor/three/three.module.js"
+  }
+}
+</script>
+</head>
+<body>
+  <video id="cam" playsinline muted autoplay aria-hidden="true"></video>
+  <canvas id="scene" aria-label="粒子花朵"></canvas>
+  <canvas id="skeleton" aria-hidden="true"></canvas>
+
+  <div id="hud">
+    <div class="row">
+      <span id="state" class="pill">初始化…</span>
+      <span class="hint">握拳=花苞 · 张开=绽放</span>
+    </div>
+    <div class="meter">
+      <div class="bar"><i id="bar"></i></div>
+      <span id="value" class="num">0.00</span>
+    </div>
+  </div>
+
+  <div id="keys"><b>L</b> 骨架 · <b>V</b> 背景 · <b>D</b> 调试</div>
+
+  <div id="gate" class="hidden" role="alertdialog" aria-live="assertive">
+    <div class="card">
+      <h2 id="gateTitle">需要摄像头权限</h2>
+      <p id="gateMsg"></p>
+      <button id="retry" type="button">重试</button>
+      <p class="tiny">摄像头只在 <code>https</code> 或 <code>localhost</code> 下可用；请用 <code>serve.cmd</code> 启动本地服务后再打开。</p>
+    </div>
+  </div>
+
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
