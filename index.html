@@ -6,6 +6,7 @@
 <meta name="theme-color" content="#000000">
 <title>指尖生花 · Gesture Bloom</title>
 <link rel="stylesheet" href="./src/style.css">
+<link rel="stylesheet" href="./src/start.css">
 <!-- MediaPipe Hands（经典脚本，暴露 window.Hands） -->
 <script src="./vendor/mediapipe/hands.js"></script>
 <script type="importmap">
@@ -17,7 +18,7 @@
 </script>
 </head>
 <body>
-  <video id="cam" playsinline muted autoplay aria-hidden="true"></video>
+  <video id="cam" class="off" playsinline muted autoplay aria-hidden="true"></video>
   <canvas id="scene" aria-label="粒子花朵"></canvas>
   <canvas id="skeleton" aria-hidden="true"></canvas>
 
@@ -34,12 +35,29 @@
 
   <div id="keys"><b>L</b> 骨架 · <b>V</b> 背景 · <b>D</b> 调试</div>
 
+  <!-- 开始界面：页面一进来就能玩，点按钮才去申请摄像头 -->
+  <div id="start">
+    <div class="panel">
+      <h1>指尖生花</h1>
+      <p class="sub">握拳 → 收拢成花苞　·　张开手掌 → 粒子绽放</p>
+      <button id="startCam" type="button">开启摄像头 · 用手势玩</button>
+      <button id="startTouch" class="ghost" type="button">不开启摄像头 · 触屏 / 鼠标玩</button>
+      <p class="tiny">
+        摄像头画面只在本机浏览器内处理，不上传。手机上需要 https（本页已支持）。
+        允许权限后把手放进画面：握拳是花苞，张开是绽放。
+      </p>
+    </div>
+  </div>
+
   <div id="gate" class="hidden" role="alertdialog" aria-live="assertive">
     <div class="card">
-      <h2 id="gateTitle">需要摄像头权限</h2>
+      <h2 id="gateTitle">摄像头没启动</h2>
       <p id="gateMsg"></p>
-      <button id="retry" type="button">重试</button>
-      <p class="tiny">摄像头只在 <code>https</code> 或 <code>localhost</code> 下可用；请用 <code>serve.cmd</code> 启动本地服务后再打开。</p>
+      <div class="actions">
+        <button id="retry" type="button">重试</button>
+        <button id="useTouch" class="ghost" type="button">用触屏 / 鼠标玩</button>
+      </div>
+      <p class="tiny">摄像头只在 <code>https</code> 或 <code>localhost</code> 下可用。</p>
     </div>
   </div>
 

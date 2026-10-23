@@ -129,7 +129,8 @@ let dpr = 1
 function resize() {
   const w = window.innerWidth
   const h = window.innerHeight
-  dpr = Math.min(window.devicePixelRatio || 1, 2)
+  // 手机上限制渲染分辨率，保证 60fps（点数 × DPR² 直接决定填充率）
+  dpr = Math.min(window.devicePixelRatio || 1, isCoarse ? 1.6 : 2)
 
   renderer.setPixelRatio(dpr)
   renderer.setSize(w, h, false)
@@ -167,49 +168,102 @@ const tracker = new HandTracker({
   },
 })
 
+const startEl = document.getElementById('start')
+const startCamBtn = document.getElementById('startCam')
+const startTouchBtn = document.getElementById('startTouch')
+const useTouchBtn = document.getElementById('useTouch')
+
+function hideStart() {
+  if (!startEl || startEl.classList.contains('hide')) return
+  startEl.classList.add('hide')
+  setTimeout(() => startEl.remove(), 500)
+}
+
+/** 触屏 / 鼠标模式：按住绽放、松开收拢、拖动跟随 */
+function enterTouchMode(hint) {
+  state.cameraReady = false
+  state.pointerMode = true
+  video.classList.add('off')
+  hideStart()
+  if (hint) toast(hint)
+  setPill('按住屏幕 / 按住鼠标 → 绽放')
+}
+
 async function startCamera() {
   hideGate()
-  // 演示 / 截图 / 自动化测试：?camera=off 直接进鼠标模式，不碰摄像头
+  hideStart()
+  // 演示 / 截图 / 自动化测试：?camera=off 直接进触屏模式，不碰摄像头
   if (params.get('camera') === 'off') {
-    state.pointerMode = true
-    video.classList.add('off')
-    setPill('鼠标模式 · 左右移动控制')
+    enterTouchMode()
     return
   }
+  setPill('正在连接摄像头…')
   try {
     await tracker.start()
     state.cameraReady = true
     state.pointerMode = false
+    setPill('把手放进画面')
   } catch (err) {
     state.cameraReady = false
-    state.pointerMode = true
     console.warn('[gesture-flower] camera failed:', err)
-    showGate('摄像头没启动', describeCameraError(err) + '\n\n已切换到「鼠标模式」：左右移动鼠标即可控制花朵绽放。')
-    setPill('鼠标模式 · 左右移动控制', 'err')
+    enterTouchMode()
+    showGate('摄像头没启动', describeCameraError(err) + '\n\n可以先用触屏 / 鼠标玩：按住即绽放，松开收拢。')
+    setPill('触屏模式 · 按住绽放', 'err')
   }
 }
 
+startCamBtn?.addEventListener('click', () => { startCamera() })
+startTouchBtn?.addEventListener('click', () => enterTouchMode('按住屏幕 / 按住鼠标 → 绽放'))
+useTouchBtn?.addEventListener('click', () => { hideGate(); enterTouchMode('按住即绽放，松开收拢') })
 retryBtn.addEventListener('click', () => {
+  hideGate()
   tracker.stop()
   startCamera()
 })
 
-/* ── 鼠标 / 触摸兜底 ──────────────────────────────────────── */
+/* ── 触屏 / 鼠标交互（摄像头不可用时的主角）──────────────── */
 let lastPointer = 0
-function usePointerFallback() {
-  if (state.cameraReady) return
-  state.pointerMode = true
-}
-window.addEventListener('pointermove', (e) => {
-  if (state.cameraReady) return
-  usePointerFallback()
+let holding = false
+
+function applyPointer(e) {
   const nx = (e.clientX / window.innerWidth - 0.5) * 2
   const ny = -(e.clientY / window.innerHeight - 0.5) * 2
-  state.target = clamp((e.clientX / window.innerWidth - 0.1) / 0.8, 0, 1)
-  state.hand.set(nx * 0.9, ny * 0.9)
-  state.handActive = 0.6
+  state.hand.set(nx * 0.85, ny * 0.85)
+  state.handActive = 0.75
   lastPointer = performance.now()
+}
+
+window.addEventListener('pointerdown', (e) => {
+  if (state.cameraReady) return
+  holding = true
+  state.pointerMode = true
+  applyPointer(e)
+  state.target = 1                      // 按住 → 绽放
+  if (e.pointerType !== 'mouse') e.preventDefault()
+}, { passive: false })
+
+window.addEventListener('pointermove', (e) => {
+  if (state.cameraReady) return
+  if (holding) { applyPointer(e); return }
+  if (e.pointerType === 'mouse') {      // 桌面：不按键也能左右扫
+    applyPointer(e)
+    state.target = clamp((e.clientX / window.innerWidth - 0.1) / 0.8, 0, 1)
+  }
 }, { passive: true })
+
+function endHold() {
+  if (state.cameraReady || !holding) return
+  holding = false
+  state.target = 0.18                   // 松开 → 收拢成花苞
+  lastPointer = 0                       // 让"待机呼吸"立刻接管
+}
+window.addEventListener('pointerup', endHold, { passive: true })
+window.addEventListener('pointercancel', endHold, { passive: true })
+window.addEventListener('pointerleave', endHold, { passive: true })
+
+// 手机上按住拖动时不要滚动页面、不要弹长按菜单
+document.addEventListener('touchmove', (e) => { if (holding) e.preventDefault() }, { passive: false })
+document.addEventListener('contextmenu', (e) => { if (!state.cameraReady) e.preventDefault() })
 
 /* ── 快捷键 ────────────────────────────────────────────────── */
 window.addEventListener('keydown', (e) => {
@@ -308,7 +362,7 @@ function animate() {
   } else if (state.cameraReady && !state.hasHand) {
     state.target = 0.45 + Math.sin(t * 0.7) * 0.06
     state.handActive += (0 - state.handActive) * 0.05
-  } else if (!state.cameraReady && performance.now() - lastPointer > 2500) {
+  } else if (!state.cameraReady && !holding && performance.now() - lastPointer > 2500) {
     state.target = 0.45 + Math.sin(t * 0.7) * 0.06
     state.handActive += (0 - state.handActive) * 0.05
   }
@@ -397,7 +451,12 @@ window.addEventListener('unhandledrejection', (e) => {
 })
 
 toast(`粒子 ${CONFIG.count} · 花瓣 ${CONFIG.petals}`)
-startCamera()
+// 页面一进来就是"可玩"状态（触屏/鼠标）；摄像头由开始界面的按钮触发
+state.pointerMode = true
+setPill('点一下开始')
+if (params.get('camera') === 'off' || CONFIG.lockedSpread !== null) {
+  enterTouchMode()   // 截图 / 演示 / 自动化：跳过开始界面
+}
 animate()
 
 let firstFrame = true

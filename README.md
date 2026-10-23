@@ -155,3 +155,20 @@ MIT（见 `LICENSE`）。第三方：
 [three.js](https://github.com/mrdoob/three.js)（MIT）、
 [MediaPipe Hands](https://github.com/google/mediapipe)（Apache-2.0）。
 `vendor/` 下为两者的原样分发，遵循各自许可。
+
+## 任何设备、任何人点开就能玩
+
+页面不强制摄像头，进来先是可以直接玩的开始界面：
+
+- **开启摄像头 · 用手势玩** → 点了才申请权限（iOS Safari 要求在用户手势里调用，
+  所以不能自动弹权限框）。拿到画面后：握拳=花苞，张开=绽放。
+- **不开启摄像头 · 触屏 / 鼠标玩** → 立刻可玩，不需要任何权限：
+  - 手机：**按住屏幕** = 绽放，**松开** = 收拢；按住拖动花朵会跟着手指走。
+  - 桌面：不按键左右移动鼠标也能控制；按住则全开。
+- 摄像头失败（拒绝授权 / 没有设备 / 被占用 / 非 https）会弹提示，并**自动落到触屏模式**，
+  不会卡在空白页。
+
+线上地址走 GitHub Pages，是 https，所以手机上摄像头也能直接用：
+<https://rafayellllllllllllll.github.io/gesture-flower/>
+
+性能：手机自动降到 10000 粒子并把渲染分辨率限制在 1.6× DPR，保证 60fps 手感。
